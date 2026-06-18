@@ -297,6 +297,125 @@
 
   .save-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  .item-row.is-urgent {
+    background: rgba(217,70,70,0.10);
+    border-color: rgba(217,70,70,0.35);
+  }
+
+  .item-row.is-urgent:hover { background: rgba(217,70,70,0.16); }
+
+  .urgent-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, background 0.15s ease;
+  }
+
+  .urgent-btn:hover { background: rgba(217,70,70,0.15); color: #E07A7A; }
+  .urgent-btn.is-urgent { color: #E25C5C; }
+
+  .note-btn {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, background 0.15s ease;
+    position: relative;
+  }
+
+  .note-btn:hover { background: rgba(255,255,255,0.08); color: var(--text-dim); }
+  .note-btn.has-note { color: var(--status-progress); }
+
+  .note-btn.has-note::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--status-progress);
+    border: 1.5px solid var(--bg-card);
+  }
+
+  .note-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: var(--bg-card-hover);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+
+  .note-textarea {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    background: rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+  }
+
+  .note-textarea:focus { border-color: var(--accent); }
+  .note-textarea::placeholder { color: var(--text-faint); }
+
+  .note-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .note-save-btn {
+    background: var(--accent);
+    color: #080B22;
+    border: none;
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .note-save-btn:hover { filter: brightness(1.1); }
+
+  .note-clear-btn {
+    background: transparent;
+    color: var(--text-faint);
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    text-decoration: underline;
+  }
+
+  .note-clear-btn:hover { color: #E07A7A; }
+
   .reset-link {
     font-size: 11.5px;
     color: var(--text-faint);
@@ -307,26 +426,53 @@
     font-family: inherit;
   }
 
+  .refresh-link {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    text-decoration: underline;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+  }
+
   .bottom-bar {
     margin-top: 24px;
     text-align: center;
+    display: flex;
+    justify-content: center;
+    gap: 18px;
   }
+
+  .loading-screen {
+    display: none;
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  #app.is-loading .loading-screen { display: block; }
+  #app.is-loading .grid { display: none; }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="app">
   <div class="topbar">
     <div class="title-block">
       <div class="eyebrow">لوحة العمل الشخصية</div>
       <h1>متابعة الأعمال والمشاريع</h1>
-      <p>اضغط على النقطة أو الوسم لتغيير حالة أي بند، وعدّل النص مباشرة بالكتابة</p>
+      <p>اضغط على النقطة أو الوسم لتغيير حالة أي بند، وعدّل النص مباشرة بالكتابة. بياناتك متزامنة من أي جهاز.</p>
     </div>
     <div class="global-stats" id="globalStats"></div>
   </div>
 
+  <div class="loading-screen" id="loadingScreen">جارِ تحميل بياناتك...</div>
+
   <div class="grid" id="grid"></div>
 
   <div class="bottom-bar">
+    <button class="refresh-link" id="refreshBtn">تحديث من آخر نسخة محفوظة</button>
     <button class="reset-link" id="resetBtn">إعادة ضبط كل البيانات</button>
   </div>
 </div>
@@ -397,31 +543,49 @@ let sections = [];
 let collapsedIds = {};
 let saveTimer = null;
 let toastTimer = null;
+let isLoaded = false;
 
 function uid(prefix) {
   return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-function loadData() {
+async function loadData() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {}
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if (res && res.value) return JSON.parse(res.value);
+  } catch (e) {
+    // المفتاح غير موجود بعد، أو أول استخدام
+  }
   return JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
 }
 
 function scheduleSave() {
+  lastEditAt = Date.now();
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  showSaving();
+  saveTimer = setTimeout(async () => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(sections));
-      showToast();
-    } catch (e) {}
+      const result = await window.storage.set(STORAGE_KEY, JSON.stringify(sections), false);
+      if (result) {
+        showToast('تم الحفظ ✓');
+      } else {
+        showToast('تعذّر الحفظ، حاول مرة أخرى');
+      }
+    } catch (e) {
+      showToast('تعذّر الحفظ، تحقق من الاتصال');
+    }
   }, 350);
 }
 
-function showToast() {
+function showSaving() {
   const toast = document.getElementById('saveToast');
+  toast.textContent = 'جارِ الحفظ...';
+  toast.classList.add('show');
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('saveToast');
+  toast.textContent = msg;
   toast.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove('show'), 1300);
@@ -546,7 +710,7 @@ function buildCard(section) {
 
 function buildItemRow(section, item) {
   const row = document.createElement('div');
-  row.className = `item-row status-${item.status}`;
+  row.className = `item-row status-${item.status}${item.urgent ? ' is-urgent' : ''}`;
 
   const dot = document.createElement('button');
   dot.className = 'status-dot';
@@ -568,6 +732,24 @@ function buildItemRow(section, item) {
   badge.textContent = STATUS_LABEL[item.status];
   badge.addEventListener('click', () => cycleStatus(section, item));
 
+  const urgentBtn = document.createElement('button');
+  urgentBtn.className = 'urgent-btn' + (item.urgent ? ' is-urgent' : '');
+  urgentBtn.title = item.urgent ? 'عاجل جداً — اضغط للتحويل لعادي' : 'عادي — اضغط لتحديده عاجل';
+  urgentBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="${item.urgent ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2">
+    <path d="M12 2C9 6 6 9 6 13a6 6 0 0012 0c0-2-1-3.5-2-5 .3 1.5-.3 2.5-1 3 .3-3-1-5.5-3-9z" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+  urgentBtn.addEventListener('click', () => {
+    item.urgent = !item.urgent;
+    scheduleSave();
+    render();
+  });
+
+  const noteBtn = document.createElement('button');
+  noteBtn.className = 'note-btn' + (item.note && item.note.trim() ? ' has-note' : '');
+  noteBtn.title = item.note && item.note.trim() ? 'عرض/تعديل الملاحظة' : 'إضافة ملاحظة';
+  noteBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M4 4h16v12H9l-5 4V4z" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+  noteBtn.addEventListener('click', () => openNotePopover(section, item, noteBtn));
+
   const delBtn = document.createElement('button');
   delBtn.className = 'delete-btn';
   delBtn.title = 'حذف';
@@ -581,9 +763,73 @@ function buildItemRow(section, item) {
 
   row.appendChild(dot);
   row.appendChild(textInput);
+  row.appendChild(urgentBtn);
+  row.appendChild(noteBtn);
   row.appendChild(badge);
   row.appendChild(delBtn);
   return row;
+}
+
+function closeAnyOpenPopover() {
+  const existing = document.querySelector('.note-popover');
+  if (existing) existing.remove();
+}
+
+function openNotePopover(section, item, anchorBtn) {
+  const already = document.querySelector('.note-popover');
+  const wasOpenForThis = already && already.dataset.itemId === item.id;
+  closeAnyOpenPopover();
+  if (wasOpenForThis) return;
+
+  const pop = document.createElement('div');
+  pop.className = 'note-popover';
+  pop.dataset.itemId = item.id;
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'note-textarea';
+  textarea.placeholder = 'اكتب ملاحظتك هنا...';
+  textarea.value = item.note || '';
+
+  const actions = document.createElement('div');
+  actions.className = 'note-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'note-save-btn';
+  saveBtn.textContent = 'حفظ';
+  saveBtn.addEventListener('click', () => {
+    item.note = textarea.value;
+    scheduleSave();
+    closeAnyOpenPopover();
+    render();
+  });
+
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'note-clear-btn';
+  clearBtn.textContent = 'مسح الملاحظة';
+  clearBtn.addEventListener('click', () => {
+    item.note = '';
+    scheduleSave();
+    closeAnyOpenPopover();
+    render();
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(clearBtn);
+  pop.appendChild(textarea);
+  pop.appendChild(actions);
+
+  anchorBtn.parentElement.style.position = 'relative';
+  anchorBtn.parentElement.appendChild(pop);
+  textarea.focus();
+
+  setTimeout(() => {
+    document.addEventListener('click', function onOutside(e) {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) {
+        closeAnyOpenPopover();
+        document.removeEventListener('click', onOutside);
+      }
+    });
+  }, 0);
 }
 
 function cycleStatus(section, item) {
@@ -593,7 +839,7 @@ function cycleStatus(section, item) {
   render();
 }
 
-document.getElementById('resetBtn').addEventListener('click', () => {
+document.getElementById('resetBtn').addEventListener('click', async () => {
   if (!confirm('سيتم حذف كل البيانات والرجوع للوضع الافتراضي. متأكد؟')) return;
   sections = JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
   collapsedIds = {};
@@ -601,8 +847,46 @@ document.getElementById('resetBtn').addEventListener('click', () => {
   render();
 });
 
-sections = loadData();
-render();
+document.getElementById('refreshBtn').addEventListener('click', async () => {
+  await refreshFromServer(true);
+});
+
+let lastEditAt = 0;
+
+async function refreshFromServer(showFeedback) {
+  // لا تستبدل البيانات إذا كان هناك تعديل جاري أو حفظ لم يكتمل، لتجنب ضياع تعديلات المستخدم
+  if (!showFeedback && (saveTimer || Date.now() - lastEditAt < 4000)) return;
+  try {
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if (res && res.value) {
+      sections = JSON.parse(res.value);
+      render();
+      if (showFeedback) showToast('تم التحديث من آخر نسخة محفوظة ✓');
+    } else if (showFeedback) {
+      showToast('لا توجد بيانات محفوظة بعد');
+    }
+  } catch (e) {
+    if (showFeedback) showToast('تعذّر التحديث، تحقق من الاتصال');
+  }
+}
+
+async function init() {
+  document.getElementById('app').classList.add('is-loading');
+  sections = await loadData();
+  isLoaded = true;
+  document.getElementById('app').classList.remove('is-loading');
+  render();
+
+  // مزامنة تلقائية كل 20 ثانية لجلب أي تعديل تم من جهاز آخر
+  setInterval(() => refreshFromServer(false), 20000);
+
+  // مزامنة فورية عند الرجوع لتبويب/تطبيق مفتوح بعد غياب
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshFromServer(false);
+  });
+}
+
+init();
 </script>
 </body>
 </html>
