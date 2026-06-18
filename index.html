@@ -286,7 +286,27 @@
     background: var(--bg-card);
     border: 1px solid var(--border-light);
     color: var(--text-dim);
-    font-size: 12.5px;
+   // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCr0JEi7pOYrHpMub0PSInVfffyRgrRRVw",
+  authDomain: "personal-work-board.firebaseapp.com",
+  projectId: "personal-work-board",
+  storageBucket: "personal-work-board.firebasestorage.app",
+  messagingSenderId: "941074240988",
+  appId: "1:941074240988:web:b003a7794bbcc12565eb19",
+  measurementId: "G-6HSTBLWZ34"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
     padding: 8px 18px;
     border-radius: 30px;
     opacity: 0;
