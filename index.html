@@ -426,16 +426,6 @@
     font-family: inherit;
   }
 
-  .refresh-link {
-    font-size: 11.5px;
-    color: var(--text-dim);
-    text-decoration: underline;
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-family: inherit;
-  }
-
   .bottom-bar {
     margin-top: 24px;
     text-align: center;
@@ -445,7 +435,7 @@
   }
 
   .loading-screen {
-    display: none;
+    display: block;
     text-align: center;
     padding: 80px 20px;
     color: var(--text-dim);
@@ -455,25 +445,28 @@
   #app.is-loading .loading-screen { display: block; }
   #app.is-loading .grid { display: none; }
 </style>
+
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
 </head>
 <body>
-<div class="wrap" id="app">
+<div class="wrap is-loading" id="app">
   <div class="topbar">
     <div class="title-block">
       <div class="eyebrow">لوحة العمل الشخصية</div>
       <h1>متابعة الأعمال والمشاريع</h1>
-      <p>اضغط على النقطة أو الوسم لتغيير حالة أي بند، وعدّل النص مباشرة بالكتابة. بياناتك متزامنة من أي جهاز.</p>
+      <p>بياناتك متزامنة ومحفوظة سحابياً بشكل تلقائي ومباشر من أي جهاز وفي أي وقت.</p>
     </div>
     <div class="global-stats" id="globalStats"></div>
   </div>
 
-  <div class="loading-screen" id="loadingScreen">جارِ تحميل بياناتك...</div>
+  <div class="loading-screen" id="loadingScreen">جارِ الاتصال بقاعدة البيانات السحابية وتحميل مشاريعك...</div>
 
   <div class="grid" id="grid"></div>
 
   <div class="bottom-bar">
-    <button class="refresh-link" id="refreshBtn">تحديث من آخر نسخة محفوظة</button>
-    <button class="reset-link" id="resetBtn">إعادة ضبط كل البيانات</button>
+    <button class="reset-link" id="resetBtn">إعادة ضبط كل البيانات للوضع الافتراضي</button>
   </div>
 </div>
 
@@ -484,6 +477,16 @@ const STORAGE_KEY = 'workboard_data_v1';
 const STATUS_CYCLE = ['new', 'progress', 'done'];
 const STATUS_LABEL = { new: 'جديد', progress: 'قيد التنفيذ', done: 'منتهي' };
 const STATUS_COLOR = { new: '#8C95D8', progress: '#D9A53C', done: '#45C19A' };
+
+// الإعدادات السحابية الافتراضية
+const firebaseConfig = {
+  // ⚠️ استبدل السطر التالي بالكامل بكود الـ config الخاص بك من فيربيز
+  ضع_هنا_بيانات_مشروعك_من_فيربيز
+};
+
+// تهيئة فيربيز
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 const DEFAULT_SECTIONS = [
   { id: 'sec_subs', title: 'اشتراكات', items: [
@@ -543,43 +546,31 @@ let sections = [];
 let collapsedIds = {};
 let saveTimer = null;
 let toastTimer = null;
-let isLoaded = false;
 
 function uid(prefix) {
   return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
-async function loadData() {
-  try {
-    const res = await window.storage.get(STORAGE_KEY, false);
-    if (res && res.value) return JSON.parse(res.value);
-  } catch (e) {
-    // المفتاح غير موجود بعد، أو أول استخدام
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
-}
-
+// تعديل دالة الحفظ السحابي بدقة متناهية لمنع فقدان البيانات أثناء الكتابة
 function scheduleSave() {
-  lastEditAt = Date.now();
   if (saveTimer) clearTimeout(saveTimer);
   showSaving();
   saveTimer = setTimeout(async () => {
     try {
-      const result = await window.storage.set(STORAGE_KEY, JSON.stringify(sections), false);
-      if (result) {
-        showToast('تم الحفظ ✓');
-      } else {
-        showToast('تعذّر الحفظ، حاول مرة أخرى');
-      }
+      await db.collection("boards").doc(STORAGE_KEY).set({
+        data: JSON.stringify(sections),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      showToast('تم الحفظ سحابياً ✓');
     } catch (e) {
-      showToast('تعذّر الحفظ، تحقق من الاتصال');
+      showToast('خطأ في الحفظ السحابي، تحقق من الاتصال');
     }
-  }, 350);
+  }, 500);
 }
 
 function showSaving() {
   const toast = document.getElementById('saveToast');
-  toast.textContent = 'جارِ الحفظ...';
+  toast.textContent = 'جارِ الحفظ سحابياً...';
   toast.classList.add('show');
 }
 
@@ -588,7 +579,7 @@ function showToast(msg) {
   toast.textContent = msg;
   toast.classList.add('show');
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove('show'), 1300);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 1500);
 }
 
 function svgDonut(total, done, progress) {
@@ -840,49 +831,35 @@ function cycleStatus(section, item) {
 }
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
-  if (!confirm('سيتم حذف كل البيانات والرجوع للوضع الافتراضي. متأكد؟')) return;
+  if (!confirm('سيتم حذف كل البيانات السحابية الحالية والرجوع للوضع الافتراضي الأول. متأكد؟')) return;
   sections = JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
   collapsedIds = {};
   scheduleSave();
   render();
 });
 
-document.getElementById('refreshBtn').addEventListener('click', async () => {
-  await refreshFromServer(true);
-});
+function init() {
+  const app = document.getElementById('app');
+  const loadingScreen = document.getElementById('loadingScreen');
 
-let lastEditAt = 0;
-
-async function refreshFromServer(showFeedback) {
-  // لا تستبدل البيانات إذا كان هناك تعديل جاري أو حفظ لم يكتمل، لتجنب ضياع تعديلات المستخدم
-  if (!showFeedback && (saveTimer || Date.now() - lastEditAt < 4000)) return;
-  try {
-    const res = await window.storage.get(STORAGE_KEY, false);
-    if (res && res.value) {
-      sections = JSON.parse(res.value);
-      render();
-      if (showFeedback) showToast('تم التحديث من آخر نسخة محفوظة ✓');
-    } else if (showFeedback) {
-      showToast('لا توجد بيانات محفوظة بعد');
+  // الاستماع لقاعدة البيانات السحابية بشكل حي ومباشر (Realtime Synchronization)
+  db.collection("boards").doc(STORAGE_KEY).onSnapshot((doc) => {
+    if (doc.exists && doc.data().data) {
+      // جلب البيانات الجديدة المحدثة فقط في حالة لم يكن المستخدم يقوم بالكتابة حالياً لمنع تداخل الأحرف
+      if (!saveTimer) {
+        sections = JSON.parse(doc.data().data);
+      }
+    } else {
+      // في حال كانت قاعدة البيانات فارغة تماماً (أول تشغيل)
+      sections = JSON.parse(JSON.stringify(DEFAULT_SECTIONS));
+      db.collection("boards").doc(STORAGE_KEY).set({ data: JSON.stringify(sections) });
     }
-  } catch (e) {
-    if (showFeedback) showToast('تعذّر التحديث، تحقق من الاتصال');
-  }
-}
-
-async function init() {
-  document.getElementById('app').classList.add('is-loading');
-  sections = await loadData();
-  isLoaded = true;
-  document.getElementById('app').classList.remove('is-loading');
-  render();
-
-  // مزامنة تلقائية كل 20 ثانية لجلب أي تعديل تم من جهاز آخر
-  setInterval(() => refreshFromServer(false), 20000);
-
-  // مزامنة فورية عند الرجوع لتبويب/تطبيق مفتوح بعد غياب
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') refreshFromServer(false);
+    
+    app.classList.remove('is-loading');
+    loadingScreen.style.display = 'none';
+    render();
+  }, (error) => {
+    showToast('خطأ في الاتصال السحابي: تأكد من ضبط قواعد الـ Rules في فيربيز على وضع الـ Test Mode');
   });
 }
 
